@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "ml22lokaal"
+version = "0.1.0"
+description = ""
+authors = ["Dennis Hagen"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = "^1.23.2"
+torch = { url = "https://download.pytorch.org/whl/cu116/torch-1.12.1%2Bcu116-cp310-cp310-win_amd64.whl"}
+torchaudio = { url = "https://download.pytorch.org/whl/cu116/torchaudio-0.12.1%2Bcu116-cp310-cp310-win_amd64.whl"}
+torchvision = { url = "https://download.pytorch.org/whl/cu116/torchvision-0.13.1%2Bcu116-cp310-cp310-win_amd64.whl"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
