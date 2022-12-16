@@ -13,6 +13,8 @@ from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.search.bohb import TuneBOHB
 from loguru import logger
 from filelock import FileLock
+import torchvision
+import torch.nn as nn
 
 def train(config: Dict, checkpoint_dir=None):
 
@@ -23,23 +25,31 @@ def train(config: Dict, checkpoint_dir=None):
         )
 
     accuracy = metrics.Accuracy()
-    model = rnn_models.GRUmodel(config) #Model moet nog aangepast worden naar Resnet.
+    resnet = torchvision.models.resnet18(pretrained=True)
 
-    model = train_model.trainloop( #Trainloop moet nog toegevoegd worden.
-        epochs=50,
-        model=model,
-        optimizer=torch.optim.Adam,
-        learning_rate=1e-3,
-        loss_fn=torch.nn.CrossEntropyLoss(),
+    for name, param in resnet.named_parameters():
+        param.requires_grad = False
+    
+    in_features = resnet.fc.in_features
+    
+    resnet.fc = nn.Sequential(
+    nn.Linear(in_features, 256), nn.ReLU(), nn.Dropout(0.1), nn.Linear(256, 5)
+)
+
+    resnet = train_model.trainloop(
+        epochs=10,
+        model=resnet,
         metrics=[accuracy],
-        train_dataloader=trainloader,
-        test_dataloader=testloader,
-        log_dir=".",
-        train_steps=len(trainloader),
-        eval_steps=len(testloader),
-        patience=5,
+        optimizer=torch.optim.Adam,
+        learning_rate=0.01,
+        loss_fn=nn.CrossEntropyLoss(),
+        train_dataloader=train_datastream,
+        test_dataloader=test_datastream,
+        log_dir="../../models/resnet",
+        eval_steps=15,
+        train_steps=25,
+        patience=2,
         factor=0.5,
-        tunewriter=True,
     )
 
 
