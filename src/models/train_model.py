@@ -22,6 +22,58 @@ from src.models.metrics import Metric
 from src.typehinting import GenericModel
 
 
+def write_gin(dir: Path, txt) -> None:
+    path = dir / "saved_config.gin"
+    with open(path, "w") as file:
+        file.write(txt)
+
+
+def trainbatches(
+    model: GenericModel,
+    traindatastreamer: Iterator,
+    loss_fn: Callable,
+    optimizer: torch.optim.Optimizer,
+    train_steps: int,
+) -> float:
+    model.train()
+    train_loss: float = 0.0
+    for _ in tqdm(range(train_steps)):
+        x, y = next(iter(traindatastreamer))
+        optimizer.zero_grad()
+        yhat = model(x)
+        loss = loss_fn(yhat, y)
+        loss.backward()
+        optimizer.step()
+        train_loss += loss.detach().numpy()
+    train_loss /= train_steps
+    return train_loss
+
+
+def evalbatches(
+    model: GenericModel,
+    testdatastreamer: Iterator,
+    loss_fn: Callable,
+    metrics: List[Metric],
+    eval_steps: int,
+) -> Tuple[Dict[str, float], float]:
+    model.eval()
+    test_loss: float = 0.0
+    metric_dict: Dict[str, float] = {}
+    for _ in range(eval_steps):
+        x, y = next(iter(testdatastreamer))
+        yhat = model(x)
+        test_loss += loss_fn(yhat, y).detach().numpy()
+        for m in metrics:
+            metric_dict[str(m)] = (
+                metric_dict.get(str(m), 0.0) + m(y, yhat).detach().numpy()
+            )
+
+    test_loss /= eval_steps
+    for key in metric_dict:
+        metric_dict[str(key)] = metric_dict[str(key)] / eval_steps
+    return metric_dict, test_loss
+
+
 @gin.configurable
 def trainloop(
     epochs: int,
@@ -121,3 +173,51 @@ def trainloop(
             )
 
     return model
+
+
+def count_parameters(model: GenericModel) -> int:
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+def find_lr(
+    model: GenericModel,
+    loss_fn: Callable,
+    optimizer: Optimizer,
+    data_loader: DataLoader,
+    smooth_window: int = 10,
+    init_value: float = 1e-8,
+    final_value: float = 10.0,
+) -> Tuple[List[float], List[float]]:
+    num_epochs = len(data_loader) - 1
+    update_step = (final_value / init_value) ** (1 / num_epochs)
+    lr = init_value
+    optimizer.param_groups[0]["lr"] = init_value
+    best_loss = Inf
+    batch_num = 0
+    losses = []
+    smooth_losses: List[float] = []
+    log_lrs: List[float] = []
+    for x, y in tqdm(data_loader):
+        optimizer.zero_grad()
+        output = model(x)
+        loss = loss_fn(output, y)
+
+        if loss < best_loss:
+            best_loss = loss
+
+        if loss > 4 * best_loss:
+            return log_lrs[10:-5], smooth_losses[10:-5]
+
+        losses.append(loss.item())
+        batch_num += 1
+        start = max(0, batch_num - smooth_window)
+        smooth = np.mean(losses[start:batch_num])
+        smooth_losses.append(smooth)
+        log_lrs.append(math.log10(lr))
+
+        loss.backward()
+        optimizer.step()
+
+        lr *= update_step
+        optimizer.param_groups[0]["lr"] = lr
+    return log_lrs[10:-5], smooth_losses[10:-5]

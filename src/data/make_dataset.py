@@ -1,23 +1,35 @@
-from __future__ import annotations
-
-from pathlib import Path
-
-import tensorflow as tf
+import gin
 import torch
-from loguru import logger
+from pathlib import Path
+from torch.utils.data import DataLoader
+from typing import List, Tuple
+from torchvision import datasets
+from torchvision.transforms import ToTensor
 
 Tensor = torch.Tensor
 
 
-def get_flowers(data_dir: Path) -> Path:
-    dataset_url = "https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz"  # noqa: E501
-    image_folder = Path(data_dir) / "datasets/flower_photos"
-    if not image_folder.exists():
-        image_folder = tf.keras.utils.get_file(
-            "flower_photos", origin=dataset_url, untar=True, cache_dir=data_dir
-        )
-        image_folder = Path(image_folder)
-        logger.info(f"Data is downloaded to {image_folder}.")
-    else:
-        logger.info(f"Dataset already exists at {image_folder}")
-    return image_folder
+@gin.configurable
+def get_MNIST(  # noqa: N802
+    data_dir: Path, batch_size: int
+) -> Tuple[DataLoader, DataLoader]:
+
+    training_data = datasets.FashionMNIST(
+        root=data_dir,
+        train=True,
+        download=True,
+        transform=ToTensor(),
+    )
+
+    test_data = datasets.FashionMNIST(
+        root=data_dir,
+        train=False,
+        download=True,
+        transform=ToTensor(),
+    )
+
+    # Create data loaders.
+    train_dataloader = DataLoader(training_data, batch_size=batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
+
+    return train_dataloader, test_dataloader
